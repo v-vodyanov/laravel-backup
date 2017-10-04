@@ -51,6 +51,27 @@ return [
          */
         'gzip_database_dump' => false,
 
+        /*
+         * Incremental files backup
+         */
+        'incremental' => [
+
+            /*
+             * If enabled, every backup creates last backup info, needed for incremental backups.
+             */
+            'enabled' => false,
+
+            /*
+             * File attached to incremental backup, that contains list of deleted files.
+             */
+            'deleted_files_list_path' => storage_path('app/deleted.txt'),
+
+            /*
+             * File with full backed up file list (made from scratch for full backups, complemeted for incremental).
+             */
+            'last_backup_info_file_path' => storage_path('app/last_backup_info.txt'),
+        ],
+
         'destination' => [
 
             /*

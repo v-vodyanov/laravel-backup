@@ -10,7 +10,7 @@ use Spatie\Backup\Tasks\Backup\BackupJobFactory;
 class BackupCommand extends BaseCommand
 {
     /** @var string */
-    protected $signature = 'backup:run {--filename=} {--only-db} {--only-files} {--only-to-disk=} {--disable-notifications}';
+    protected $signature = 'backup:run {--filename=} {--only-db} {--only-files} {--only-to-disk=} {--disable-notifications} {--incremental}';
 
     /** @var string */
     protected $description = 'Run the backup.';
@@ -40,6 +40,10 @@ class BackupCommand extends BaseCommand
 
             if ($this->option('filename')) {
                 $backupJob->setFilename($this->option('filename'));
+            }
+
+            if ($this->option('incremental')) {
+                $backupJob->setIsIncrementalFilesBackup(true);
             }
 
             if ($disableNotifications) {
