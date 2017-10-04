@@ -45,6 +45,10 @@ class BackupCommand extends BaseCommand
                 $backupJob->setFilename($this->option('filename'));
             }
 
+            if ($this->option('incremental')) {
+                $backupJob->setIsIncrementalFilesBackup(true);
+            }
+
             if ($disableNotifications) {
                 $backupJob->disableNotifications();
             }
