@@ -110,6 +110,13 @@ class BackupJob
         return $this;
     }
 
+    public function setIsIncrementalFilesBackup(bool $inc): BackupJob
+    {
+        $this->isIncrementalFilesBackup = $inc;
+
+        return $this;
+    }
+
     public function onlyBackupTo(string $diskName): self
     {
         $this->backupDestinations = $this->backupDestinations->filter(function (BackupDestination $backupDestination) use ($diskName) {
