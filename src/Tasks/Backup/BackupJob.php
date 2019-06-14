@@ -177,7 +177,7 @@ class BackupJob
             ->addFiles($databaseDumps)
             ->addFiles($this->filesToBeBackedUp());
 
-        $isNeedToCreateLastBackupInfo = config('laravel-backup.backup.incremental.enabled', false);
+        $isNeedToCreateLastBackupInfo = config('backup.backup.incremental.enabled', false);
         $tempFullManifestPath = $manifest->path().'_lbi_temp';
 
         if ($isNeedToCreateLastBackupInfo) {
@@ -216,7 +216,7 @@ class BackupJob
         $lastBackupTime = $lastBackupInfo->getUpdateTime();
 
         $deletedFilesListPath = config(
-            'laravel-backup.backup.incremental.deleted_files_list_path',
+            'backup.backup.incremental.deleted_files_list_path',
             storage_path('app/deleted.txt')
         );
 

@@ -37,7 +37,7 @@ class LastBackupInfo
     }
 
     public static function getFilePath() {
-        return config('laravel-backup.backup.incremental.last_backup_info_file_path', storage_path('app/last_backup_info.txt'));
+        return config('backup.backup.incremental.last_backup_info_file_path', storage_path('app/last_backup_info.txt'));
     }
 
     public function getUpdateTime(): DateTime {
