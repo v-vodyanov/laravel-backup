@@ -2,8 +2,11 @@
 
 namespace Spatie\Backup\Tasks\Backup;
 
+use DateTime;
 use Exception;
 use Carbon\Carbon;
+use Illuminate\Filesystem\Filesystem;
+use Spatie\Backup\Exceptions\CannotMakeIncrementalFilesBackup;
 use Spatie\DbDumper\DbDumper;
 use Illuminate\Support\Collection;
 use Spatie\DbDumper\Databases\Sqlite;
@@ -36,6 +39,9 @@ class BackupJob
 
     /** @var bool */
     protected $sendNotifications = true;
+
+    /** @var bool */
+    protected $isIncrementalFilesBackup = false;
 
     public function __construct()
     {
@@ -79,7 +85,7 @@ class BackupJob
 
     public function setDefaultFilename(): self
     {
-        $this->filename = Carbon::now()->format('Y-m-d-H-i-s').'.zip';
+        $this->filename = Carbon::now()->format('Y-m-d-H-i-s') . '.zip';
 
         return $this;
     }
@@ -105,13 +111,21 @@ class BackupJob
         return $this;
     }
 
+    public function setIsIncrementalFilesBackup(bool $inc): self
+    {
+        $this->isIncrementalFilesBackup = $inc;
+
+        return $this;
+    }
+
     public function onlyBackupTo(string $diskName): self
     {
-        $this->backupDestinations = $this->backupDestinations->filter(function (BackupDestination $backupDestination) use ($diskName) {
+        $this->backupDestinations = $this->backupDestinations->filter(function (BackupDestination $backupDestination
+        ) use ($diskName) {
             return $backupDestination->diskName() === $diskName;
         });
 
-        if (! count($this->backupDestinations)) {
+        if (!count($this->backupDestinations)) {
             throw InvalidBackupJob::destinationDoesNotExist($diskName);
         }
 
@@ -136,13 +150,13 @@ class BackupJob
             ->empty();
 
         try {
-            if (! count($this->backupDestinations)) {
+            if (!count($this->backupDestinations)) {
                 throw InvalidBackupJob::noDestinationsSpecified();
             }
 
             $manifest = $this->createBackupManifest();
 
-            if (! $manifest->count()) {
+            if (!$manifest->count()) {
                 throw InvalidBackupJob::noFilesToBeBackedUp();
             }
 
@@ -150,7 +164,7 @@ class BackupJob
 
             $this->copyToBackupDestinations($zipFile);
         } catch (Exception $exception) {
-            consoleOutput()->error("Backup failed because {$exception->getMessage()}.".PHP_EOL.$exception->getTraceAsString());
+            consoleOutput()->error("Backup failed because {$exception->getMessage()}." . PHP_EOL . $exception->getTraceAsString());
 
             $this->sendNotification(new BackupHasFailed($exception));
 
@@ -172,6 +186,22 @@ class BackupJob
             ->addFiles($databaseDumps)
             ->addFiles($this->filesToBeBackedUp());
 
+        $isNeedToCreateLastBackupInfo = config('backup.backup.incremental.enabled', false);
+        $tempFullManifestPath = $manifest->path() . '_lbi_temp';
+
+        if ($isNeedToCreateLastBackupInfo) {
+            app(Filesystem::class)->copy($manifest->path(), $tempFullManifestPath);
+        }
+
+        if ($this->isIncrementalFilesBackup) {
+            $this->processManifestToMakeIncrementalBackup($manifest);
+        }
+
+        if ($isNeedToCreateLastBackupInfo) {
+            LastBackupInfo::createForManifest(Manifest::create($tempFullManifestPath));
+            app(Filesystem::class)->delete($tempFullManifestPath);
+        }
+
         $this->sendNotification(new BackupManifestWasCreated($manifest));
 
         return $manifest;
@@ -184,6 +214,40 @@ class BackupJob
         return $this->fileSelection->selectedFiles();
     }
 
+    private function processManifestToMakeIncrementalBackup(Manifest $manifest) {
+
+        $lastBackupInfo = LastBackupInfo::load();
+
+        if ($lastBackupInfo === null) {
+            throw CannotMakeIncrementalFilesBackup::noLastBackupInfoPresented();
+        }
+
+        $lastBackupTime = $lastBackupInfo->getUpdateTime();
+
+        $deletedFilesListPath = config(
+            'backup.backup.incremental.deleted_files_list_path',
+            storage_path('app/deleted.txt')
+        );
+
+        $lastBackupInfo->updateDeletedFilesList($deletedFilesListPath);
+
+        $newManifest = Manifest::create($manifest->path() . '_temp');
+
+        $newManifest->addFiles($deletedFilesListPath);
+
+        $getFileUpdateTime = function(string $filepath) {
+            return new DateTime('@' . filemtime($filepath));
+        };
+
+        foreach ($manifest->files() as $file) {
+            if ($lastBackupTime < $getFileUpdateTime($file)) {
+                $newManifest->addFiles($file);
+            }
+        }
+
+        app(Filesystem::class)->move($newManifest->path(), $manifest->path());
+    }
+
     protected function directoriesUsedByBackupJob(): array
     {
         return $this->backupDestinations
@@ -191,7 +255,7 @@ class BackupJob
                 return $backupDestination->filesystemType() === 'local';
             })
             ->map(function (BackupDestination $backupDestination) {
-                return $backupDestination->disk()->getDriver()->getAdapter()->applyPathPrefix('').$backupDestination->backupName();
+                return $backupDestination->disk()->getDriver()->getAdapter()->applyPathPrefix('') . $backupDestination->backupName();
             })
             ->each(function (string $backupDestinationDirectory) {
                 $this->fileSelection->excludeFilesFrom($backupDestinationDirectory);
@@ -204,7 +268,7 @@ class BackupJob
     {
         consoleOutput()->info("Zipping {$manifest->count()} files...");
 
-        $pathToZip = $this->temporaryDirectory->path(config('backup.backup.destination.filename_prefix').$this->filename);
+        $pathToZip = $this->temporaryDirectory->path(config('backup.backup.destination.filename_prefix') . $this->filename);
 
         $zip = Zip::createForManifest($manifest, $pathToZip);
 
@@ -245,7 +309,7 @@ class BackupJob
                 $fileName .= '.'.$dbDumper->getCompressorExtension();
             }
 
-            $temporaryFilePath = $this->temporaryDirectory->path('db-dumps'.DIRECTORY_SEPARATOR.$fileName);
+            $temporaryFilePath = $this->temporaryDirectory->path('db-dumps' . DIRECTORY_SEPARATOR . $fileName);
 
             $dbDumper->dumpToFile($temporaryFilePath);
 
